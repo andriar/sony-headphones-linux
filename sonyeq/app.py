@@ -699,8 +699,7 @@ class App(Adw.Application):
             else "audio-headphones"
         about = dict(application_name="Sony Headphones", application_icon=icon,
                      version=__version__, developer_name="sony-headphones-linux contributors",
-                     website="https://github.com/andriar/sony-headphones-linux",
-                     issue_url="https://github.com/andriar/sony-headphones-linux/issues",
+                     website="https://apps.andriar.com/sony-headphones/",
                      license_type=Gtk.License.MIT_X11,
                      comments="Unofficial app, not affiliated with or endorsed by Sony.")
         if hasattr(Adw, "AboutDialog"):  # libadwaita 1.5+

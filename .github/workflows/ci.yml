@@ -1,0 +1,37 @@
+name: ci
+
+# Releases are cut from a workstation with scripts/release.sh; CI only proves every push still
+# tests, packages and builds as a Flatpak.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  APP_ID: com.andriar.SonyHeadphones
+  NFPM_VERSION: "2.48.0"
+  NFPM_SHA256: "6d7f9a28b2f397934403950fcbba83f598b08d02edbe79a0815b3b4897341750"
+
+jobs:
+  packages:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -m unittest discover -s tests -t .
+      - name: Install nfpm
+        run: |
+          f="nfpm_${NFPM_VERSION}_Linux_x86_64.tar.gz"
+          curl -fsSLO "https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VERSION}/$f"
+          echo "$NFPM_SHA256  $f" | sha256sum -c -
+          tar xzf "$f" nfpm && sudo install -m 755 nfpm /usr/local/bin/nfpm
+      - run: scripts/build-packages.sh
+
+  flatpak:
+    runs-on: ubuntu-24.04
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-51
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: true }
+      - run: flatpak-builder --user --force-clean --install-deps-from=flathub build/app packaging/flatpak/$APP_ID.yml

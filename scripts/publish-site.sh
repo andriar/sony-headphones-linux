@@ -9,7 +9,7 @@ NOTE="${2:-}"
 VERSION="$(python3 -c 'import sonyeq; print(sonyeq.__version__)')"
 DEST="$SITE/site/sony-headphones/dl/$VERSION"
 shopt -s nullglob
-files=(dist/*"$VERSION"*.deb dist/*"$VERSION"*.rpm)
+files=(dist/*"$VERSION"*.deb dist/*"$VERSION"*.rpm dist/*"$VERSION"*.flatpak)
 [ ${#files[@]} -gt 0 ] || { echo "no packages for $VERSION in dist/; run scripts/build-packages.sh" >&2; exit 1; }
 mkdir -p "$DEST"
 cp "${files[@]}" "$DEST/"

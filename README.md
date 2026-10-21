@@ -165,7 +165,8 @@ For desktops without GNOME Shell. Shows the battery level in the panel; the
 menu switches noise control and EQ presets, and "Open Sony Headphones…"
 opens the app. When the headset disconnects the controls are greyed out; they
 come back on their own when it reconnects. State is also re-read every 60
-seconds, or on "Refresh". On GNOME, use the Quick Settings toggle instead.
+seconds, or on "Refresh". On GNOME, use the Quick Settings toggle instead; the tray's
+launcher is hidden there (`NotShowIn=GNOME`), but `sonyeq-tray` still runs if you start it.
 
 ## How it works
 

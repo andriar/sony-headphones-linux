@@ -1,0 +1,10 @@
+# Sony APKs, decompiler output, device captures and one-off probes stay local (never publish).
+re/
+*.log
+*.zip
+.envrc.rea
+.tool-versions
+__pycache__/
+*.egg-info/
+build/
+dist/

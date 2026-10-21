@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sony-headphones-linux"
+version = "0.1.0"
+description = "Control Sony headphones (MDR protocol v2) from Linux: EQ, noise cancelling, ambient sound, battery"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+classifiers = [
+    "Operating System :: POSIX :: Linux",
+    "Topic :: Multimedia :: Sound/Audio",
+    "Environment :: X11 Applications :: GTK",
+]
+
+[project.scripts]
+sonyeq = "sonyeq.cli:main"
+
+[project.gui-scripts]
+sonyeq-tray = "sonyeq.tray:main"
+
+[tool.setuptools]
+packages = ["sonyeq"]

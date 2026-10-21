@@ -2,7 +2,7 @@
 """Write releases.json for the download page from the packages in dist/.
 
 Usage: scripts/release-manifest.py <dist-dir> <base-url> [--notes "line" ...] > releases.json
-<base-url> is where the version folder lives, e.g. https://dl.andriar.com/sony-headphones
+<base-url> is where the version folders live, relative to the product page (e.g. "dl") or absolute
 """
 import argparse
 import datetime

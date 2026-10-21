@@ -58,26 +58,26 @@ jobs:
   publish:
     needs: [packages]
     runs-on: ubuntu-24.04
-    env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      R2_BUCKET: ${{ vars.R2_BUCKET }}
-      DL_BASE: ${{ vars.DL_BASE }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with: { name: packages, path: dist }
-      - name: Write releases.json
-        run: scripts/release-manifest.py dist "$DL_BASE/$PRODUCT" --notes "$(git tag -l --format='%(contents:subject)' "$GITHUB_REF_NAME")" > dist/releases.json
-      - name: Upload to R2
+      # Packages are served by the apps-site Pages project; pushing there triggers its deploy workflow.
+      - uses: actions/checkout@v4
+        with:
+          repository: andriar/apps-site
+          token: ${{ secrets.APPS_SITE_TOKEN }}
+          path: apps-site
+      - name: Copy packages and write releases.json
+        run: scripts/publish-site.sh apps-site "$(git tag -l --format='%(contents:subject)' "$GITHUB_REF_NAME")"
+      - name: Push to apps-site
+        working-directory: apps-site
         run: |
-          v=$(python3 -c 'import sonyeq; print(sonyeq.__version__)')
-          for f in dist/*.deb dist/*.rpm; do
-            npx --yes wrangler@4 r2 object put "$R2_BUCKET/$PRODUCT/$v/$(basename "$f")" --file "$f" --remote \
-              --cache-control "public, max-age=31536000, immutable"
-          done
-          npx --yes wrangler@4 r2 object put "$R2_BUCKET/$PRODUCT/releases.json" --file dist/releases.json --remote \
-            --content-type application/json --cache-control "no-cache"
+          git config user.name "release bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add site/sony-headphones
+          git commit -m "release: sony-headphones $GITHUB_REF_NAME"
+          git push
       - name: GitHub release (private backup)
-        run: gh release create "$GITHUB_REF_NAME" dist/*.deb dist/*.rpm dist/releases.json --title "$GITHUB_REF_NAME" --notes-from-tag
+        run: gh release create "$GITHUB_REF_NAME" dist/*.deb dist/*.rpm --title "$GITHUB_REF_NAME" --notes-from-tag
         env: { GH_TOKEN: "${{ github.token }}" }

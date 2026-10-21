@@ -13,12 +13,14 @@ classifiers = [
     "Operating System :: POSIX :: Linux",
     "Topic :: Multimedia :: Sound/Audio",
     "Environment :: X11 Applications :: GTK",
+    "Environment :: X11 Applications :: Gnome",
 ]
 
 [project.scripts]
 sonyeq = "sonyeq.cli:main"
 
 [project.gui-scripts]
+sonyeq-app = "sonyeq.app:main"
 sonyeq-tray = "sonyeq.tray:main"
 
 [tool.setuptools]

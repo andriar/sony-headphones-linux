@@ -1,0 +1,7 @@
+{
+  "uuid": "sony-headphones@andriar.github.io",
+  "name": "Sony Headphones",
+  "description": "Quick Settings toggle for noise cancelling and ambient sound on Sony headphones, with the battery level. Needs the sonyeq command from sony-headphones-linux.",
+  "shell-version": ["45", "46", "47", "48"],
+  "url": "https://github.com/andriar/sony-headphones-linux"
+}

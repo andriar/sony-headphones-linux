@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Sony Headphones
+Comment=Noise canceling, ambient sound, equalizer and battery for Sony headphones
+Exec=sonyeq-app
+Icon=audio-headphones
+Terminal=false
+Categories=Settings;HardwareSettings;
+Keywords=sony;headphones;noise;canceling;cancelling;anc;ambient;equalizer;eq;battery;bluetooth;
+StartupNotify=true

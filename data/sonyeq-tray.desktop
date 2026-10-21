@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
-Name=Sony Headphones
-Comment=Noise cancelling, ambient sound, EQ and battery for Sony headphones
+Name=Sony Headphones Tray Icon
+Comment=Tray icon for Sony headphones, for desktops without the GNOME Shell extension
 Exec=sonyeq-tray
 Icon=audio-headphones
 Terminal=false

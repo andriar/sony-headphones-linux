@@ -31,10 +31,13 @@ class SonyDevice:
         return "dev_" + self.mac.replace(":", "_")
 
 
-def _run(*cmd: str) -> str:
+def _run(*cmd: str, timeout: float = 10) -> str:
     if not shutil.which(cmd[0]):
         raise DeviceError(f"{cmd[0]} not found; install bluez")
-    return subprocess.run(cmd, capture_output=True, text=True, timeout=10).stdout
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout).stdout
+    except subprocess.TimeoutExpired as e:
+        raise DeviceError(f"{cmd[0]} did not answer within {timeout:g} s") from e
 
 
 def device_info(mac: str) -> SonyDevice | None:
@@ -52,8 +55,8 @@ def device_info(mac: str) -> SonyDevice | None:
     )
 
 
-def _dbus_devices() -> list[SonyDevice] | None:
-    """Paired devices from BlueZ's object manager, or None when D-Bus/PyGObject is unavailable."""
+def _bluez_objects():
+    """(system bus, BlueZ's managed objects), or None when D-Bus/PyGObject is unavailable."""
     try:
         from gi.repository import Gio, GLib
     except ImportError:
@@ -64,8 +67,16 @@ def _dbus_devices() -> list[SonyDevice] | None:
                                 None, None, Gio.DBusCallFlags.NONE, 5000, None).unpack()[0]
     except GLib.Error:
         return None
+    return bus, objects
+
+
+def _dbus_devices() -> list[SonyDevice] | None:
+    """Paired devices from BlueZ's object manager, or None when D-Bus/PyGObject is unavailable."""
+    found_objects = _bluez_objects()
+    if found_objects is None:
+        return None
     found = []
-    for interfaces in objects.values():
+    for interfaces in found_objects[1].values():
         d = interfaces.get("org.bluez.Device1")
         if not d or not d.get("Paired"):
             continue
@@ -108,6 +119,25 @@ def pick_device(mac: str | None = None) -> SonyDevice:
     if not dev.connected:
         raise DeviceError(f"{dev.name} is paired but not connected; turn it on or run: bluetoothctl connect {dev.mac}")
     return dev
+
+
+def connect(mac: str) -> bool:
+    """Ask BlueZ to connect a paired device; True once it reports success."""
+    found_objects = _bluez_objects()
+    if found_objects is None:
+        return "Connection successful" in _run("bluetoothctl", "connect", mac, timeout=25)
+    from gi.repository import Gio, GLib
+    bus, objects = found_objects
+    path = next((p for p, ifaces in objects.items()
+                 if ifaces.get("org.bluez.Device1", {}).get("Address", "").upper() == mac.upper()), None)
+    if path is None:
+        raise DeviceError(f"{mac} is not known to BlueZ; pair it first")
+    try:
+        bus.call_sync("org.bluez", path, "org.bluez.Device1", "Connect", None, None,
+                      Gio.DBusCallFlags.NONE, 25000, None)
+    except GLib.Error:
+        return False
+    return True
 
 
 def control_channel(mac: str) -> int:

@@ -1,8 +1,12 @@
 # sony-headphones-linux
 
 Control Sony headphones from Linux without the phone app: noise cancelling,
-ambient sound, the hardware equalizer, and battery level. Comes with a CLI
-(`sonyeq`) and a tray icon (`sonyeq-tray`).
+ambient sound, the hardware equalizer, and battery level. Comes with:
+
+- **Sony Headphones** (`sonyeq-app`), a GNOME app built with GTK 4 and libadwaita
+- a **GNOME Shell Quick Settings toggle** for noise control, with the battery level
+- a **tray icon** (`sonyeq-tray`) for desktops other than GNOME
+- a **CLI** (`sonyeq`)
 
 Settings are written to the headset itself, so they stay in effect on your
 phone, laptop and any other device.
@@ -27,9 +31,11 @@ verified on the WH-1000XM5. Reports from other models are welcome; run
 
 - Linux with BlueZ (`bluetoothctl`; `sdptool` optional, used to find the RFCOMM channel)
 - Python 3.10+
-- For the tray icon: PyGObject, GTK 3 and Ayatana AppIndicator
-  (on GNOME also the AppIndicator extension). Ubuntu/Debian/Zorin:
-  `sudo apt install python3-gi gir1.2-gtk-3.0 gir1.2-ayatanaappindicator3-0.1`
+- For the app: PyGObject with cairo, GTK 4 and libadwaita 1.4+ (GNOME 45 or later).
+  Ubuntu/Debian/Zorin: `sudo apt install python3-gi python3-gi-cairo gir1.2-gtk-4.0 gir1.2-adw-1`
+- For the Quick Settings toggle: GNOME Shell 45 or later (tested on 46)
+- For the tray icon: GTK 3 and Ayatana AppIndicator.
+  Ubuntu/Debian/Zorin: `sudo apt install gir1.2-gtk-3.0 gir1.2-ayatanaappindicator3-0.1`
 
 The headset must be paired and connected in your Bluetooth settings first.
 Close the Sony app on your phone while using this tool; the headset only takes
@@ -43,15 +49,33 @@ cd sony-headphones-linux
 pip install --user .        # or: pipx install --system-site-packages .
 ```
 
-Without installing, run it from the checkout with `python3 -m sonyeq` and
-`python3 -m sonyeq.tray`.
+Without installing, run it from the checkout with `python3 -m sonyeq`,
+`python3 -m sonyeq.app` and `python3 -m sonyeq.tray`.
 
-Tray icon at login:
+Add the app to your app grid:
+
+```bash
+cp data/com.andriar.SonyHeadphones.desktop ~/.local/share/applications/
+install -Dm644 packaging/flatpak/com.andriar.SonyHeadphones.svg \
+  ~/.local/share/icons/hicolor/scalable/apps/com.andriar.SonyHeadphones.svg
+```
+
+On GNOME, add the Quick Settings toggle. It needs `sonyeq` installed (above).
+On Wayland, log out and back in once so GNOME Shell sees the new extension, then enable it:
+
+```bash
+cp -r gnome-shell-extension/sony-headphones@andriar.github.io ~/.local/share/gnome-shell/extensions/
+gnome-extensions enable sony-headphones@andriar.github.io
+```
+
+On other desktops, start the tray icon at login instead:
 
 ```bash
 cp data/sonyeq-tray.desktop ~/.local/share/applications/
 cp data/sonyeq-tray.desktop ~/.config/autostart/
 ```
+
+The .deb and .rpm packages install all of this; you only enable the extension.
 
 ## CLI
 
@@ -65,18 +89,61 @@ sonyeq preset bright                        # off bright excited mellow relaxed 
 sonyeq bands 3 0 0 1 2 1                    # WH-1000XM5: clear-bass 400 1k 2.5k 6.3k 16k, each -10..10
 sonyeq set clear-bass=5 16k=-2              # change some levels, keep the rest
 sonyeq battery
+sonyeq --json status                        # machine-readable, for scripts (status and anc)
 ```
 
 `bands` and `set` write to the `custom` preset, so the app's saved Custom 1 /
 Custom 2 stay untouched unless you pass `--slot custom1` or `--slot custom2`.
 
-## Tray icon
+## The app
 
-Shows the battery level in the top bar. The menu switches noise control and EQ
-presets; "Equalizer & ambient…" opens a window with the band sliders, ambient
-level and focus on voice. When the headset disconnects the controls are
-greyed out; they come back on their own when it reconnects. State is also
-re-read every 60 seconds, or on "Refresh".
+Open **Sony Headphones** from the app grid, or run `sonyeq-app`. The header
+shows the headset and its battery. Below it:
+
+- **Noise Control**: Noise Canceling, Ambient Sound or Off. In ambient mode you
+  also get the ambient level and Focus on Voice.
+- **Equalizer**: the preset, and one slider per band that the headset reports.
+  The line above the sliders previews the curve. Moving a slider saves the curve
+  to the Custom preset, as the phone app does.
+
+When no headset is paired, or it is off or out of range, the window says so and
+offers the next step: open Bluetooth settings, or connect. It switches back to
+the controls on its own when the headset connects. It follows the system's
+light/dark style and accent color.
+
+Shortcuts: <kbd>Ctrl</kbd>+<kbd>R</kbd> refresh, <kbd>Ctrl</kbd>+<kbd>W</kbd> close,
+<kbd>Ctrl</kbd>+<kbd>?</kbd> all shortcuts.
+
+## Quick Settings toggle (GNOME)
+
+Adds **Noise Control** next to Power Mode in Quick Settings. Click it to turn
+noise control off, or back on to the mode you used last. The subtitle shows the
+mode and battery (`Canceling · 84%`); the arrow opens a menu with all three
+modes and a link to the app. The toggle is hidden while the headset is off or
+not paired, like the Bluetooth toggle without an adapter.
+
+It runs `sonyeq --json status` and `sonyeq --json anc <mode>` instead of
+talking to a D-Bus service. That is the simpler and sturdier choice here:
+
+- Nothing has to run in the background, so there is no daemon to install,
+  start at login, restart after a crash or keep in sync with the extension.
+- The headset only takes one control client at a time and every call is short.
+  The CLI takes a per-user lock (`$XDG_RUNTIME_DIR/sonyeq.lock`), so the
+  extension, the app, the tray icon and your own `sonyeq` commands take turns
+  instead of failing.
+- The extension stays small JavaScript with no protocol code. All headset
+  logic stays in Python, in one place.
+
+The cost is one short process per refresh. The toggle refreshes when you open
+Quick Settings, when the headset connects or disconnects, and every 5 minutes.
+
+## Tray icon (other desktops)
+
+For desktops without GNOME Shell. Shows the battery level in the panel; the
+menu switches noise control and EQ presets, and "Open Sony Headphones…"
+opens the app. When the headset disconnects the controls are greyed out; they
+come back on their own when it reconnects. State is also re-read every 60
+seconds, or on "Refresh". On GNOME, use the Quick Settings toggle instead.
 
 ## How it works
 

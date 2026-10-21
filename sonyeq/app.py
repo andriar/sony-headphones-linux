@@ -1,5 +1,6 @@
 """Sony Headphones: a GTK 4 + libadwaita window for noise control, the equalizer and battery."""
 import dataclasses
+import math
 import shutil
 import signal
 import sys
@@ -9,6 +10,7 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
+import cairo  # noqa: E402
 from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
 from . import __version__, bluez, eq  # noqa: E402
@@ -19,6 +21,7 @@ from .headset import Headset, HeadsetError, Snapshot  # noqa: E402
 ICON = "audio-headphones-symbolic"
 POLL_SECONDS = 60
 STALE_SECONDS = 15
+LOADING_DELAY_MS = 400  # a load that finishes sooner goes straight to the controls, without a flash
 SLIDER_DEBOUNCE_MS = 350
 CURVE_HEIGHT = 56
 SLIDER_HEIGHT = 168
@@ -102,6 +105,50 @@ class EqCurve(Gtk.DrawingArea):
         cr.stroke()
 
 
+class Spinner(Gtk.DrawingArea):
+    """Thin rotating arc in the accent color, like libadwaita 1.6's spinner.
+
+    Drawn here rather than Gtk.Spinner, which some icon themes render as a static cog.
+    """
+
+    SIZE = 32
+
+    def __init__(self):
+        super().__init__(content_width=self.SIZE, content_height=self.SIZE, halign=Gtk.Align.CENTER)
+        self.add_css_class("accent")
+        self._angle = 0.0
+        self._tick = 0
+        self.set_draw_func(self._draw)
+        self.connect("map", self._start)
+        self.connect("unmap", self._stop)
+
+    def _start(self, *_):
+        if Gtk.Settings.get_default().props.gtk_enable_animations and not self._tick:
+            self._tick = self.add_tick_callback(self._on_tick)
+
+    def _stop(self, *_):
+        if self._tick:
+            self.remove_tick_callback(self._tick)
+            self._tick = 0
+
+    def _on_tick(self, _widget, clock):
+        self._angle = (clock.get_frame_time() / 1e6 * 2 * math.pi / 1.2) % (2 * math.pi)
+        self.queue_draw()
+        return GLib.SOURCE_CONTINUE
+
+    def _draw(self, _area, cr, width, height):
+        c = self.get_color()
+        r = min(width, height) / 2 - 2
+        cr.set_line_width(3)
+        cr.set_line_cap(cairo.LineCap.ROUND)
+        cr.set_source_rgba(c.red, c.green, c.blue, 0.18)
+        cr.arc(width / 2, height / 2, r, 0, 2 * math.pi)
+        cr.stroke()
+        cr.set_source_rgba(c.red, c.green, c.blue, c.alpha)
+        cr.arc(width / 2, height / 2, r, self._angle, self._angle + 0.6 * math.pi)
+        cr.stroke()
+
+
 class Window(Adw.ApplicationWindow):
     def __init__(self, app: Adw.Application, headset: Headset | None = None):
         super().__init__(application=app, title="Sony Headphones", icon_name=ICON)
@@ -116,6 +163,7 @@ class Window(Adw.ApplicationWindow):
         self._loaded_at = 0.0
         self._pending = {"eq": 0, "level": 0}
         self._reconnect_timer = 0
+        self._loading_timer = 0
         self._slot_names: tuple[str, ...] = ()
         self._preset_ids: list[str] = []
         self._curve_from = 0
@@ -127,7 +175,7 @@ class Window(Adw.ApplicationWindow):
         self._poll_id = GLib.timeout_add_seconds(POLL_SECONDS, self._poll)
         self.connect("notify::is-active", self._on_active)
         self.connect("close-request", self._on_close)
-        self.show_busy("Looking for Your Headphones")
+        self.show_busy("Looking for your headphones…", delay=True)
         self.refresh()
 
     # ---- layout -------------------------------------------------------------
@@ -151,20 +199,28 @@ class Window(Adw.ApplicationWindow):
 
         self.status = Adw.StatusPage(icon_name=ICON)
         actions = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12, halign=Gtk.Align.CENTER)
-        self.spinner = Gtk.Spinner(spinning=True, width_request=32, height_request=32)
         self.primary = Gtk.Button(css_classes=["pill", "suggested-action"])
         self.primary.connect("clicked", self._on_primary)
         self.secondary = Gtk.Button(label="Bluetooth Settings", css_classes=["pill"])
         self.secondary.connect("clicked", lambda _: self._open_bluetooth_settings())
-        for w in (self.spinner, self.primary, self.secondary):
-            actions.append(w)
+        actions.append(self.primary)
+        actions.append(self.secondary)
         self.status.set_child(actions)
+
+        # Waiting is not a problem to explain: a small spinner and one quiet line, no status page.
+        loading = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14,
+                          halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
+        self.loading_label = Gtk.Label(css_classes=["dim-label"])
+        loading.append(Spinner())
+        loading.append(self.loading_label)
 
         page = Adw.PreferencesPage()
         page.add(self._build_noise())
         page.add(self._build_eq())
 
         self.stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE)
+        self.stack.add_named(Gtk.Box(), "blank")
+        self.stack.add_named(loading, "loading")
         self.stack.add_named(self.status, "status")
         self.stack.add_named(page, "controls")
         self.toasts = Adw.ToastOverlay(child=self.stack)
@@ -287,47 +343,64 @@ class Window(Adw.ApplicationWindow):
         self.title.set_subtitle(subtitle)
         self.set_title(title)
 
-    def _show_status(self, title, description, primary=None, settings=False, busy=False):
+    def _show_page(self, name: str):
+        if self._loading_timer:
+            GLib.source_remove(self._loading_timer)
+            self._loading_timer = 0
+        self.stack.set_visible_child_name(name)
+
+    def _show_status(self, title, description, primary=None, settings=False):
         self.status.set_title(title)
         self.status.set_description(description)
-        self.spinner.set_visible(busy)
-        self.spinner.set_spinning(busy)
         self.primary.set_visible(primary is not None)
         if primary:
             self.primary.set_label(primary)
         self.secondary.set_visible(settings and self._bt_settings is not None)
-        self.stack.set_visible_child_name("status")
+        self._show_page("status")
 
-    def show_busy(self, title: str):
+    def show_busy(self, text: str, delay: bool = False):
+        """Show that something is in progress; with delay, only if it is still going after a moment."""
         self._set_title("Sony Headphones")
-        self._show_status(title, None, busy=True)
+        self.loading_label.set_label(text)
+        if not delay:
+            self._show_page("loading")
+            return
+        self._show_page("blank")
+
+        def reveal():
+            self._loading_timer = 0
+            self.stack.set_visible_child_name("loading")
+            return GLib.SOURCE_REMOVE
+
+        self._loading_timer = GLib.timeout_add(LOADING_DELAY_MS, reveal)
 
     def show_absence(self, a: Absence):
         self.absence, self.snapshot = a, None
         self._set_title("Sony Headphones")
-        name = a.device.name if a.device else "Your headphones"
+        name = a.device.name if a.device else "your headphones"
+        # Short titles: the window is narrow and the device name reads better in the sentence below.
         if a.kind == "none":
-            self._show_status("No Sony Headphones Paired",
-                              "Pair your headphones in Bluetooth settings. They show up here once connected.",
+            self._show_status("No Headphones Paired",
+                              "Pair your Sony headphones in Bluetooth settings. They show up here once connected.",
                               primary="Open Bluetooth Settings" if self._bt_settings else None)
         elif a.kind == "unsupported":
-            self._show_status(f"{name} Isn’t Supported Yet",
-                              "These headphones use Sony’s older control protocol. For now only models with "
+            self._show_status("Not Supported Yet",
+                              f"{name} uses Sony’s older control protocol. For now only models with "
                               "the newer one, like the WH-1000XM5, work.")
         elif a.kind == "disconnected":
-            self._show_status(f"{name} Is Not Connected",
-                              "Turn on your headphones. They usually reconnect on their own "
-                              "within a few seconds.", primary="Connect", settings=True)
+            self._show_status("Not Connected",
+                              f"Turn on your {name}. It usually reconnects on its own within a few seconds.",
+                              primary="Connect", settings=True)
         else:
             print(f"sonyeq: {a.message}", file=sys.stderr)
-            self._show_status(f"Can’t Reach {name}",
-                              "Close the Sony app on your phone, then try again. "
-                              "The headphones accept one controller at a time.", primary="Try Again")
+            self._show_status("Not Responding",
+                              f"Close the Sony app on your phone, then try again. {name} accepts "
+                              "one controller at a time.", primary="Try Again")
 
     def show_snapshot(self, snap: Snapshot):
         self.snapshot, self.absence = snap, None
         self._set_title(snap.name, battery_text(snap))
-        self.stack.set_visible_child_name("controls")
+        self._show_page("controls")
         self._sync()
 
     def _sync(self):
@@ -410,7 +483,7 @@ class Window(Adw.ApplicationWindow):
             self._reconnect_timer = 0
         if connected:
             if self.snapshot is None and dev is not None:
-                self.show_busy(f"Connecting to {dev.name}")
+                self.show_busy(f"Connecting to {dev.name}…")
             # Give the headset a moment to bring up its profiles before opening the control channel.
             self._reconnect_timer = GLib.timeout_add(RECONNECT_DELAY_MS, self._reconnect)
         else:
@@ -443,11 +516,11 @@ class Window(Adw.ApplicationWindow):
         elif a and a.kind == "disconnected" and a.device:
             self._connect(a)
         else:
-            self.show_busy("Looking for Your Headphones")
+            self.show_busy("Looking for your headphones…")
             self.refresh()
 
     def _connect(self, a: Absence):
-        self.show_busy(f"Connecting to {a.device.name}")
+        self.show_busy(f"Connecting to {a.device.name}…")
         mac = a.device.mac
 
         def done(ok):

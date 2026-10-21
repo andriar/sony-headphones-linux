@@ -27,7 +27,9 @@ def fake_run(devices, infos):
 
 class PickDeviceTest(unittest.TestCase):
     def pick(self, devices, infos, mac=None):
-        with mock.patch.object(bluez, "_run", fake_run(devices, infos)), mock.patch.dict("os.environ", {}, clear=True):
+        with mock.patch.object(bluez, "_run", fake_run(devices, infos)), \
+                mock.patch.object(bluez, "_dbus_devices", return_value=None), \
+                mock.patch.dict("os.environ", {}, clear=True):
             return bluez.pick_device(mac)
 
     def test_connected_v2_headset(self):
@@ -53,6 +55,20 @@ class PickDeviceTest(unittest.TestCase):
         dev = self.pick("Device AA:AA:AA:AA:AA:AA WH-1000XM5\nDevice AA:BB:CC:DD:EE:FF WH-1000XM5\n",
                         {"AA:AA:AA:AA:AA:AA": other, "AA:BB:CC:DD:EE:FF": INFO_V2.format(connected="yes")})
         self.assertEqual(dev.mac, "AA:BB:CC:DD:EE:FF")
+
+
+class DbusPathTest(unittest.TestCase):
+    def test_dbus_devices_are_used_when_available(self):
+        dev = bluez.SonyDevice("AA:BB:CC:DD:EE:FF", "WH-1000XM5", True, True, False)
+        with mock.patch.object(bluez, "_dbus_devices", return_value=[dev]), \
+                mock.patch.object(bluez, "_run", side_effect=AssertionError("bluetoothctl must not run")), \
+                mock.patch.dict("os.environ", {}, clear=True):
+            self.assertEqual(bluez.pick_device(), dev)
+
+    def test_explicit_mac_matches_case_insensitively(self):
+        dev = bluez.SonyDevice("AA:BB:CC:DD:EE:FF", "WH-1000XM5", True, True, False)
+        with mock.patch.object(bluez, "_dbus_devices", return_value=[dev]):
+            self.assertEqual(bluez.pick_device("aa:bb:cc:dd:ee:ff"), dev)
 
 
 if __name__ == "__main__":

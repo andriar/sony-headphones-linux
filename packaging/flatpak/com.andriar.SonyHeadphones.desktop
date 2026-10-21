@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Sony Headphones
+Comment=Noise cancelling, ambient sound, EQ and battery for Sony headphones
+Exec=sonyeq-tray
+Icon=com.andriar.SonyHeadphones
+Terminal=false
+Categories=AudioVideo;Audio;
+StartupNotify=false

@@ -11,7 +11,7 @@ import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 import cairo  # noqa: E402
-from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
+from gi.repository import Adw, Gdk, Gio, GLib, GObject, Graphene, Gtk  # noqa: E402
 
 from . import __version__, bluez, eq  # noqa: E402
 from .gui import (APP_ID, PRESET_LABELS, RECONNECT_DELAY_MS, Absence, BluezWatch, Worker,  # noqa: E402
@@ -149,6 +149,90 @@ class Spinner(Gtk.DrawingArea):
         cr.stroke()
 
 
+def _rounded_rect(cr, x, y, w, h, r):
+    cr.new_sub_path()
+    cr.arc(x + w - r, y + r, r, -math.pi / 2, 0)
+    cr.arc(x + w - r, y + h - r, r, 0, math.pi / 2)
+    cr.arc(x + r, y + h - r, r, math.pi / 2, math.pi)
+    cr.arc(x + r, y + r, r, math.pi, 3 * math.pi / 2)
+    cr.close_path()
+
+
+class HeadphonesArt(GObject.Object, Gdk.Paintable):
+    """Status page illustration: line-art headphones in the text color, with an accent badge.
+
+    Drawn in code instead of an icon-theme name, so it looks the same under every icon theme
+    and follows the style's text and accent colors.
+    """
+
+    SIZE = 128
+
+    def __init__(self, colors):
+        super().__init__()
+        self._colors = colors  # () -> (text color, accent color), both Gdk.RGBA
+        self.badge: str | None = None  # "bluetooth" | "power" | "dots" | None
+
+    def set_badge(self, badge: str | None):
+        self.badge = badge
+        self.invalidate_contents()
+
+    def do_get_intrinsic_width(self):
+        return self.SIZE
+
+    def do_get_intrinsic_height(self):
+        return self.SIZE
+
+    def do_snapshot(self, snapshot, width, height):
+        cr = snapshot.append_cairo(Graphene.Rect().init(0, 0, width, height))
+        cr.scale(width / self.SIZE, height / self.SIZE)
+        cr.set_line_cap(cairo.LineCap.ROUND)
+        cr.set_line_join(cairo.LineJoin.ROUND)
+        fg, accent = self._colors()
+
+        cr.set_source_rgba(fg.red, fg.green, fg.blue, 0.5)
+        cr.set_line_width(7)
+        cr.move_to(24, 76)
+        cr.line_to(24, 60)
+        cr.arc(64, 60, 40, math.pi, 2 * math.pi)
+        cr.line_to(104, 76)
+        cr.stroke()
+        for x in (8, 88):
+            _rounded_rect(cr, x, 66, 32, 50, 16)
+            cr.set_source_rgba(fg.red, fg.green, fg.blue, 0.12)
+            cr.fill_preserve()
+            cr.set_source_rgba(fg.red, fg.green, fg.blue, 0.5)
+            cr.set_line_width(5)
+            cr.stroke()
+        if self.badge:
+            self._draw_badge(cr, accent)
+
+    def _draw_badge(self, cr, accent):
+        cx, cy, r = 106, 108, 17
+        cr.set_operator(cairo.Operator.CLEAR)  # a gap between badge and headphones
+        cr.arc(cx, cy, r + 5, 0, 2 * math.pi)
+        cr.fill()
+        cr.set_operator(cairo.Operator.OVER)
+        cr.set_source_rgba(accent.red, accent.green, accent.blue, 1)
+        cr.arc(cx, cy, r, 0, 2 * math.pi)
+        cr.fill()
+        cr.set_source_rgba(1, 1, 1, 1)
+        cr.set_line_width(3)
+        if self.badge == "bluetooth":
+            for dx, dy in ((-5, -5), (5, 5), (0, 10), (0, -10), (5, -5), (-5, 5)):
+                cr.line_to(cx + dx, cy + dy)
+            cr.stroke()
+        elif self.badge == "power":
+            cr.arc(cx, cy + 1, 7, -math.pi / 2 + 0.7, 3 * math.pi / 2 - 0.7)
+            cr.stroke()
+            cr.move_to(cx, cy - 9)
+            cr.line_to(cx, cy - 1)
+            cr.stroke()
+        elif self.badge == "dots":
+            for dx in (-6, 0, 6):
+                cr.arc(cx + dx, cy, 2.2, 0, 2 * math.pi)
+                cr.fill()
+
+
 class Window(Adw.ApplicationWindow):
     def __init__(self, app: Adw.Application, headset: Headset | None = None):
         super().__init__(application=app, title="Sony Headphones", icon_name=ICON)
@@ -197,7 +281,9 @@ class Window(Adw.ApplicationWindow):
         header.pack_end(Gtk.MenuButton(icon_name="open-menu-symbolic", menu_model=menu, primary=True,
                                        tooltip_text="Main Menu"))
 
-        self.status = Adw.StatusPage(icon_name=ICON)
+        self.art = HeadphonesArt(lambda: (self.status.get_color(), self.curve.get_color()))
+        self.status = Adw.StatusPage(paintable=self.art)
+        Adw.StyleManager.get_default().connect("notify::dark", lambda *_: self.art.invalidate_contents())
         actions = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12, halign=Gtk.Align.CENTER)
         self.primary = Gtk.Button(css_classes=["pill", "suggested-action"])
         self.primary.connect("clicked", self._on_primary)
@@ -349,7 +435,8 @@ class Window(Adw.ApplicationWindow):
             self._loading_timer = 0
         self.stack.set_visible_child_name(name)
 
-    def _show_status(self, title, description, primary=None, settings=False):
+    def _show_status(self, title, description, primary=None, settings=False, badge=None):
+        self.art.set_badge(badge)
         self.status.set_title(title)
         self.status.set_description(description)
         self.primary.set_visible(primary is not None)
@@ -382,7 +469,7 @@ class Window(Adw.ApplicationWindow):
         if a.kind == "none":
             self._show_status("No Headphones Paired",
                               "Pair your Sony headphones in Bluetooth settings. They show up here once connected.",
-                              primary="Open Bluetooth Settings" if self._bt_settings else None)
+                              primary="Open Bluetooth Settings" if self._bt_settings else None, badge="bluetooth")
         elif a.kind == "unsupported":
             self._show_status("Not Supported Yet",
                               f"{name} uses Sony’s older control protocol. For now only models with "
@@ -390,12 +477,12 @@ class Window(Adw.ApplicationWindow):
         elif a.kind == "disconnected":
             self._show_status("Not Connected",
                               f"Turn on your {name}. It usually reconnects on its own within a few seconds.",
-                              primary="Connect", settings=True)
+                              primary="Connect", settings=True, badge="power")
         else:
             print(f"sonyeq: {a.message}", file=sys.stderr)
             self._show_status("Not Responding",
                               f"Close the Sony app on your phone, then try again. {name} accepts "
-                              "one controller at a time.", primary="Try Again")
+                              "one controller at a time.", primary="Try Again", badge="dots")
 
     def show_snapshot(self, snap: Snapshot):
         self.snapshot, self.absence = snap, None

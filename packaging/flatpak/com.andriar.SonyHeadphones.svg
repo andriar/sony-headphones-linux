@@ -1,6 +1,27 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
-  <rect x="8" y="8" width="112" height="112" rx="26" fill="#2a1d17"/>
-  <path d="M30 76V64a34 34 0 0 1 68 0v12" fill="none" stroke="#e5e1d8" stroke-width="9" stroke-linecap="round"/>
-  <rect x="24" y="68" width="20" height="32" rx="7" fill="#e5e1d8"/>
-  <rect x="84" y="68" width="20" height="32" rx="7" fill="#456f3a"/>
+  <defs>
+    <linearGradient id="cup" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f6f5f4"/>
+      <stop offset="1" stop-color="#c0bfbc"/>
+    </linearGradient>
+    <linearGradient id="band" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#c0bfbc"/>
+      <stop offset="0.5" stop-color="#f6f5f4"/>
+      <stop offset="1" stop-color="#c0bfbc"/>
+    </linearGradient>
+  </defs>
+  <ellipse cx="64" cy="117" rx="50" ry="5" fill="#000" opacity="0.15"/>
+  <!-- headband: darker shell with a lighter padded top -->
+  <path d="M24 70V58a40 40 0 0 1 80 0v12" fill="none" stroke="#77767b" stroke-width="12" stroke-linecap="round"/>
+  <path d="M24 70V58a40 40 0 0 1 80 0v12" fill="none" stroke="url(#band)" stroke-width="7" stroke-linecap="round"/>
+  <!-- ear cups: base (thickness) under the face, cushion on the inner side -->
+  <rect x="8" y="64" width="32" height="52" rx="16" fill="#9a9996"/>
+  <rect x="8" y="60" width="32" height="52" rx="16" fill="url(#cup)"/>
+  <rect x="36" y="68" width="8" height="38" rx="4" fill="#5e5c64"/>
+  <rect x="88" y="64" width="32" height="52" rx="16" fill="#9a9996"/>
+  <rect x="88" y="60" width="32" height="52" rx="16" fill="url(#cup)"/>
+  <rect x="84" y="68" width="8" height="38" rx="4" fill="#5e5c64"/>
+  <!-- the app's equalizer curve, echoed on both cups -->
+  <path d="M14 90c3 0 4-8 7-8s4 14 7 14 4-6 6-6" fill="none" stroke="#3584e4" stroke-width="3" stroke-linecap="round"/>
+  <path d="M94 90c3 0 4-8 7-8s4 14 7 14 4-6 6-6" fill="none" stroke="#3584e4" stroke-width="3" stroke-linecap="round"/>
 </svg>

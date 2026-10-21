@@ -1,0 +1,43 @@
+# Build: flatpak run org.flatpak.Builder --user --force-clean --install-deps-from=flathub \
+#          --repo=build/repo build/app packaging/flatpak/com.andriar.SonyHeadphones.yml
+app-id: com.andriar.SonyHeadphones
+runtime: org.gnome.Platform
+runtime-version: "51"
+sdk: org.gnome.Sdk
+command: sonyeq-tray
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  # RFCOMM sockets to the headset's control channel
+  - --allow=bluetooth
+  # Find the headset and its connection state in BlueZ
+  - --system-talk-name=org.bluez
+  # Tray icon
+  - --talk-name=org.kde.StatusNotifierWatcher
+modules:
+  - shared-modules/libayatana-appindicator/libayatana-appindicator-gtk3.json
+
+  - name: sony-headphones-linux
+    buildsystem: simple
+    build-commands:
+      - install -d /app/share/sony-headphones-linux/sonyeq
+      - install -m 644 sonyeq/*.py /app/share/sony-headphones-linux/sonyeq/
+      - sed 's|/usr/share|/app/share|' bin/sonyeq > /app/bin/sonyeq && chmod 755 /app/bin/sonyeq
+      - sed 's|/usr/share|/app/share|' bin/sonyeq-tray > /app/bin/sonyeq-tray && chmod 755 /app/bin/sonyeq-tray
+      - install -Dm 644 com.andriar.SonyHeadphones.desktop /app/share/applications/com.andriar.SonyHeadphones.desktop
+      - install -Dm 644 com.andriar.SonyHeadphones.metainfo.xml /app/share/metainfo/com.andriar.SonyHeadphones.metainfo.xml
+      - install -Dm 644 com.andriar.SonyHeadphones.svg /app/share/icons/hicolor/scalable/apps/com.andriar.SonyHeadphones.svg
+    sources:
+      - type: dir
+        path: ../../sonyeq
+        dest: sonyeq
+      - type: dir
+        path: ../bin
+        dest: bin
+      - type: file
+        path: com.andriar.SonyHeadphones.desktop
+      - type: file
+        path: com.andriar.SonyHeadphones.metainfo.xml
+      - type: file
+        path: com.andriar.SonyHeadphones.svg

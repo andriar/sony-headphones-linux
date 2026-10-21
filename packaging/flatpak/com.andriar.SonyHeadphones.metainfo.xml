@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.andriar.SonyHeadphones</id>
+  <name>Sony Headphones</name>
+  <summary>Noise cancelling, ambient sound, EQ and battery from the top bar</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <developer id="com.andriar">
+    <name>Andriar M</name>
+  </developer>
+  <description>
+    <p>Controls Sony headphones that use the MDR v2 control protocol over Bluetooth: noise cancelling,
+    ambient sound level and focus on voice, the hardware equalizer, and battery level. Settings are
+    stored in the headset. Tested on the WH-1000XM5.</p>
+    <p>Unofficial. Not affiliated with or endorsed by Sony.</p>
+  </description>
+  <launchable type="desktop-id">com.andriar.SonyHeadphones.desktop</launchable>
+  <url type="homepage">https://apps.andriar.com/sony-headphones/</url>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.1.0" date="2026-10-21"/>
+  </releases>
+</component>

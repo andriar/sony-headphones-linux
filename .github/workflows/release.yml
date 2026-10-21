@@ -1,0 +1,83 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+env:
+  PRODUCT: sony-headphones
+  APP_ID: com.andriar.SonyHeadphones
+  NFPM_VERSION: "2.48.0"
+  NFPM_SHA256: "6d7f9a28b2f397934403950fcbba83f598b08d02edbe79a0815b3b4897341750"
+
+jobs:
+  packages:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag must match sonyeq.__version__
+        run: |
+          v=$(python3 -c 'import sonyeq; print(sonyeq.__version__)')
+          test "v$v" = "$GITHUB_REF_NAME" || { echo "tag $GITHUB_REF_NAME != version $v"; exit 1; }
+      - run: python3 -m unittest discover -s tests -t .
+      - name: Install nfpm
+        run: |
+          f="nfpm_${NFPM_VERSION}_Linux_x86_64.tar.gz"
+          curl -fsSLO "https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VERSION}/$f"
+          echo "$NFPM_SHA256  $f" | sha256sum -c -
+          tar xzf "$f" nfpm && sudo install -m 755 nfpm /usr/local/bin/nfpm
+      - run: scripts/build-packages.sh
+      - uses: actions/upload-artifact@v4
+        with: { name: packages, path: dist/ }
+
+  # Built on every release as a check, but not published: RFCOMM sockets were refused inside the
+  # sandbox in testing. Add it to publish.needs and the upload loop once that is confirmed working.
+  flatpak:
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-51
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: true }
+      - name: Build bundle
+        run: |
+          v=$(python3 -c 'import sonyeq; print(sonyeq.__version__)')
+          flatpak-builder --user --force-clean --install-deps-from=flathub --repo=build/repo build/app \
+            packaging/flatpak/$APP_ID.yml
+          mkdir -p dist
+          flatpak build-bundle --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo \
+            build/repo "dist/sony-headphones-linux-$v.flatpak" "$APP_ID"
+      - uses: actions/upload-artifact@v4
+        with: { name: flatpak-preview, path: dist/ }
+
+  publish:
+    needs: [packages]
+    runs-on: ubuntu-24.04
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      R2_BUCKET: ${{ vars.R2_BUCKET }}
+      DL_BASE: ${{ vars.DL_BASE }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: packages, path: dist }
+      - name: Write releases.json
+        run: scripts/release-manifest.py dist "$DL_BASE/$PRODUCT" --notes "$(git tag -l --format='%(contents:subject)' "$GITHUB_REF_NAME")" > dist/releases.json
+      - name: Upload to R2
+        run: |
+          v=$(python3 -c 'import sonyeq; print(sonyeq.__version__)')
+          for f in dist/*.deb dist/*.rpm; do
+            npx --yes wrangler@4 r2 object put "$R2_BUCKET/$PRODUCT/$v/$(basename "$f")" --file "$f" --remote \
+              --cache-control "public, max-age=31536000, immutable"
+          done
+          npx --yes wrangler@4 r2 object put "$R2_BUCKET/$PRODUCT/releases.json" --file dist/releases.json --remote \
+            --content-type application/json --cache-control "no-cache"
+      - name: GitHub release (private backup)
+        run: gh release create "$GITHUB_REF_NAME" dist/*.deb dist/*.rpm dist/releases.json --title "$GITHUB_REF_NAME" --notes-from-tag
+        env: { GH_TOKEN: "${{ github.token }}" }

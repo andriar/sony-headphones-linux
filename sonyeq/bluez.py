@@ -1,4 +1,8 @@
-"""Find Sony headsets known to BlueZ and resolve their control channel (via bluetoothctl / sdptool)."""
+"""Find Sony headsets known to BlueZ and resolve their control channel.
+
+Devices are read from BlueZ over D-Bus when PyGObject is available (this also works inside the
+Flatpak sandbox); otherwise from `bluetoothctl`. The RFCOMM channel comes from `sdptool` when present.
+"""
 import os
 import re
 import shutil
@@ -51,21 +55,46 @@ def device_info(mac: str) -> SonyDevice | None:
     )
 
 
-def sony_devices() -> list[SonyDevice]:
-    out = _run("bluetoothctl", "devices", "Paired")
+def _dbus_devices() -> list[SonyDevice] | None:
+    """Paired devices from BlueZ's object manager, or None when D-Bus/PyGObject is unavailable."""
+    try:
+        from gi.repository import Gio, GLib
+    except ImportError:
+        return None
+    try:
+        bus = Gio.bus_get_sync(Gio.BusType.SYSTEM)
+        objects = bus.call_sync("org.bluez", "/", "org.freedesktop.DBus.ObjectManager", "GetManagedObjects",
+                                None, None, Gio.DBusCallFlags.NONE, 5000, None).unpack()[0]
+    except GLib.Error:
+        return None
     found = []
-    for mac in re.findall(r"^Device ([0-9A-F:]{17}) ", out, re.M):
-        info = device_info(mac)
-        if info and (info.v2 or info.v1):
-            found.append(info)
+    for interfaces in objects.values():
+        d = interfaces.get("org.bluez.Device1")
+        if not d or not d.get("Paired"):
+            continue
+        uuids = {u.lower() for u in d.get("UUIDs", [])}
+        found.append(SonyDevice(mac=d["Address"].upper(), name=d.get("Alias") or d.get("Name") or d["Address"],
+                                connected=bool(d.get("Connected")), v2=UUID_V2 in uuids, v1=UUID_V1 in uuids))
     return found
+
+
+def _paired_devices() -> list[SonyDevice]:
+    devices = _dbus_devices()
+    if devices is not None:
+        return devices
+    out = _run("bluetoothctl", "devices", "Paired")
+    return [d for mac in re.findall(r"^Device ([0-9A-F:]{17}) ", out, re.M) if (d := device_info(mac))]
+
+
+def sony_devices() -> list[SonyDevice]:
+    return [d for d in _paired_devices() if d.v2 or d.v1]
 
 
 def pick_device(mac: str | None = None) -> SonyDevice:
     """Return the headset to talk to; raises DeviceError with a user-facing reason otherwise."""
     mac = mac or os.environ.get("SONYEQ_MAC")
     if mac:
-        dev = device_info(mac)
+        dev = next((d for d in _paired_devices() if d.mac == mac.upper()), None)
         if dev is None:
             raise DeviceError(f"{mac} is not known to BlueZ; pair it first")
     else:

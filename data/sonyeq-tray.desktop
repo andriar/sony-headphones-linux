@@ -8,3 +8,4 @@ Terminal=false
 Categories=AudioVideo;Audio;
 StartupNotify=false
 X-GNOME-Autostart-Delay=5
+NotShowIn=GNOME;

@@ -4,27 +4,29 @@ app-id: com.andriar.SonyHeadphones
 runtime: org.gnome.Platform
 runtime-version: "51"
 sdk: org.gnome.Sdk
-command: sonyeq-tray
+command: sonyeq-app
 finish-args:
   - --share=ipc
   - --socket=wayland
   - --socket=fallback-x11
-  # RFCOMM sockets to the headset's control channel
+  - --device=dri
+  # RFCOMM sockets to the headset's control channel. The kernel only creates Bluetooth sockets in
+  # the host network namespace, so without --share=network socket() fails with EAFNOSUPPORT.
   - --allow=bluetooth
+  - --share=network
   # Find the headset and its connection state in BlueZ
   - --system-talk-name=org.bluez
-  # Tray icon
-  - --talk-name=org.kde.StatusNotifierWatcher
+  # Share the per-user headset lock with sonyeq and the GNOME Shell extension on the host. Only
+  # binds when the file already exists on the host when the app starts; see README.
+  - --filesystem=xdg-run/sonyeq.lock
 modules:
-  - shared-modules/libayatana-appindicator/libayatana-appindicator-gtk3.json
-
   - name: sony-headphones-linux
     buildsystem: simple
     build-commands:
-      - install -d /app/share/sony-headphones-linux/sonyeq
+      - install -d /app/bin /app/share/sony-headphones-linux/sonyeq
       - install -m 644 sonyeq/*.py /app/share/sony-headphones-linux/sonyeq/
       - sed 's|/usr/share|/app/share|' bin/sonyeq > /app/bin/sonyeq && chmod 755 /app/bin/sonyeq
-      - sed 's|/usr/share|/app/share|' bin/sonyeq-tray > /app/bin/sonyeq-tray && chmod 755 /app/bin/sonyeq-tray
+      - sed 's|/usr/share|/app/share|' bin/sonyeq-app > /app/bin/sonyeq-app && chmod 755 /app/bin/sonyeq-app
       - install -Dm 644 com.andriar.SonyHeadphones.desktop /app/share/applications/com.andriar.SonyHeadphones.desktop
       - install -Dm 644 com.andriar.SonyHeadphones.metainfo.xml /app/share/metainfo/com.andriar.SonyHeadphones.metainfo.xml
       - install -Dm 644 com.andriar.SonyHeadphones.svg /app/share/icons/hicolor/scalable/apps/com.andriar.SonyHeadphones.svg

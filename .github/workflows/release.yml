@@ -33,8 +33,11 @@ jobs:
       - uses: actions/upload-artifact@v4
         with: { name: packages, path: dist/ }
 
+  # Built on every release as a check, but not published: RFCOMM sockets were refused inside the
+  # sandbox in testing. Add it to publish.needs and the upload loop once that is confirmed working.
   flatpak:
     runs-on: ubuntu-24.04
+    continue-on-error: true
     container:
       image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-51
       options: --privileged
@@ -50,10 +53,10 @@ jobs:
           flatpak build-bundle --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo \
             build/repo "dist/sony-headphones-linux-$v.flatpak" "$APP_ID"
       - uses: actions/upload-artifact@v4
-        with: { name: flatpak, path: dist/ }
+        with: { name: flatpak-preview, path: dist/ }
 
   publish:
-    needs: [packages, flatpak]
+    needs: [packages]
     runs-on: ubuntu-24.04
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -63,18 +66,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
-        with: { path: dist, merge-multiple: true }
+        with: { name: packages, path: dist }
       - name: Write releases.json
         run: scripts/release-manifest.py dist "$DL_BASE/$PRODUCT" --notes "$(git tag -l --format='%(contents:subject)' "$GITHUB_REF_NAME")" > dist/releases.json
       - name: Upload to R2
         run: |
           v=$(python3 -c 'import sonyeq; print(sonyeq.__version__)')
-          for f in dist/*.deb dist/*.rpm dist/*.flatpak; do
+          for f in dist/*.deb dist/*.rpm; do
             npx --yes wrangler@4 r2 object put "$R2_BUCKET/$PRODUCT/$v/$(basename "$f")" --file "$f" --remote \
               --cache-control "public, max-age=31536000, immutable"
           done
           npx --yes wrangler@4 r2 object put "$R2_BUCKET/$PRODUCT/releases.json" --file dist/releases.json --remote \
             --content-type application/json --cache-control "no-cache"
       - name: GitHub release (private backup)
-        run: gh release create "$GITHUB_REF_NAME" dist/*.deb dist/*.rpm dist/*.flatpak dist/releases.json --title "$GITHUB_REF_NAME" --notes-from-tag
+        run: gh release create "$GITHUB_REF_NAME" dist/*.deb dist/*.rpm dist/releases.json --title "$GITHUB_REF_NAME" --notes-from-tag
         env: { GH_TOKEN: "${{ github.token }}" }

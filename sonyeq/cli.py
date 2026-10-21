@@ -1,5 +1,6 @@
 """sonyeq — control Sony headphones (MDR protocol v2) from Linux: EQ, noise control, battery."""
 import argparse
+import json
 import sys
 
 from . import eq, ncasm
@@ -17,6 +18,20 @@ def show_ncasm(state: ncasm.NcAsmState) -> None:
           f"focus on voice {'on' if state.voice else 'off'})")
 
 
+def ncasm_json(state: ncasm.NcAsmState) -> dict:
+    return {"mode": state.mode, "level": state.level, "voice": state.voice}
+
+
+def snapshot_json(snap) -> dict:
+    return {
+        "name": snap.name,
+        "battery": {"percent": snap.battery.percent, "charging": snap.battery.charging} if snap.battery else None,
+        "ncasm": ncasm_json(snap.ncasm) if snap.ncasm else None,
+        "eq": {"preset": snap.eq.preset_name, "levels": dict(zip(snap.caps.eq.slot_names, snap.eq.levels))}
+        if snap.eq else None,
+    }
+
+
 def parse_assignments(pairs: list[str]) -> dict[str, int]:
     out = {}
     for pair in pairs:
@@ -32,6 +47,8 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--mac", help="headset address (default: $SONYEQ_MAC or the paired Sony headset)")
     ap.add_argument("--channel", type=int, help="RFCOMM channel (default: looked up via SDP)")
     ap.add_argument("-v", "--verbose", action="store_true", help="print raw frames")
+    ap.add_argument("--json", action="store_true",
+                    help="machine-readable output for status and anc; errors become {\"error\": …}")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     sub.add_parser("status", help="show battery, noise control and EQ")
@@ -53,7 +70,11 @@ def main(argv: list[str] | None = None) -> None:
 
     hs = Headset(args.mac, args.channel, verbose=args.verbose)
     try:
-        if args.cmd == "status":
+        if args.json and args.cmd not in ("status", "anc"):
+            raise ValueError("--json is supported for status and anc")
+        if args.cmd == "status" and args.json:
+            print(json.dumps(snapshot_json(hs.snapshot())))
+        elif args.cmd == "status":
             snap = hs.snapshot()
             print(snap.name)
             if snap.battery:
@@ -85,11 +106,18 @@ def main(argv: list[str] | None = None) -> None:
         elif args.cmd == "anc":
             voice = None if args.voice is None else args.voice == "on"
             if args.mode is None and args.level is None and voice is None:
-                show_ncasm(hs.read_ncasm())
+                state = hs.read_ncasm()
             else:
-                show_ncasm(hs.set_ncasm(args.mode, args.level, voice))
+                state = hs.set_ncasm(args.mode, args.level, voice)
+            if args.json:
+                print(json.dumps(ncasm_json(state)))
+            else:
+                show_ncasm(state)
         elif args.cmd == "battery":
             bat = hs.read_battery()
             print(f"{bat.percent}% ({bat.charging})")
     except (ValueError, HeadsetError) as e:
+        if args.json:
+            print(json.dumps({"error": str(e), "disconnected": getattr(e, "disconnected", False)}))
+            sys.exit(1)
         sys.exit(f"sonyeq: {e}")

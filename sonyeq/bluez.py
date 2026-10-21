@@ -27,10 +27,13 @@ class SonyDevice:
         return "dev_" + self.mac.replace(":", "_")
 
 
-def _run(*cmd: str) -> str:
+def _run(*cmd: str, timeout: float = 10) -> str:
     if not shutil.which(cmd[0]):
         raise DeviceError(f"{cmd[0]} not found; install bluez")
-    return subprocess.run(cmd, capture_output=True, text=True, timeout=10).stdout
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout).stdout
+    except subprocess.TimeoutExpired as e:
+        raise DeviceError(f"{cmd[0]} did not answer within {timeout:g} s") from e
 
 
 def device_info(mac: str) -> SonyDevice | None:
@@ -79,6 +82,11 @@ def pick_device(mac: str | None = None) -> SonyDevice:
     if not dev.connected:
         raise DeviceError(f"{dev.name} is paired but not connected; turn it on or run: bluetoothctl connect {dev.mac}")
     return dev
+
+
+def connect(mac: str) -> bool:
+    """Ask BlueZ to connect a paired device; True once it reports success."""
+    return "Connection successful" in _run("bluetoothctl", "connect", mac, timeout=25)
 
 
 def control_channel(mac: str) -> int:

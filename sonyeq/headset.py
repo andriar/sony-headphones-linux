@@ -1,4 +1,9 @@
 """High-level headset operations. Each call opens its own short RFCOMM session."""
+import fcntl
+import os
+import tempfile
+import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 
 from . import bluez, eq, ncasm, power
@@ -7,12 +12,37 @@ from .device import Link
 CMD_CONNECT_GET_PROTOCOL_INFO = 0x00
 CMD_CONNECT_RET_PROTOCOL_INFO = 0x01
 PROBE_TIMEOUT = 1.5
+LOCK_TIMEOUT = 20.0
 
 
 class HeadsetError(RuntimeError):
     def __init__(self, message: str, disconnected: bool = False):
         super().__init__(message)
         self.disconnected = disconnected
+
+
+def lock_path() -> str:
+    return os.path.join(os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir(), "sonyeq.lock")
+
+
+@contextmanager
+def exclusive(timeout: float | None = None):
+    """Hold the per-user headset lock, so the CLI, tray, app and shell extension take turns."""
+    timeout = LOCK_TIMEOUT if timeout is None else timeout
+    fd = os.open(lock_path(), os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        deadline = time.monotonic() + timeout
+        while True:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    raise HeadsetError("another program is still talking to the headset; try again") from None
+                time.sleep(0.1)
+        yield
+    finally:
+        os.close(fd)
 
 
 @dataclass(frozen=True)
@@ -115,21 +145,30 @@ class Headset:
 class _Session:
     def __init__(self, headset: Headset, link: Link):
         self.headset, self.link = headset, link
+        self._lock = exclusive()
 
     def __enter__(self):
+        self._lock.__enter__()
         try:
-            self.link.__enter__()
-        except OSError as e:
-            raise HeadsetError(f"cannot open the control channel: {e}") from e
-        try:
-            self.ask(bytes((CMD_CONNECT_GET_PROTOCOL_INFO, 0x00)), CMD_CONNECT_RET_PROTOCOL_INFO)
-        except HeadsetError:
-            self.link.__exit__(None, None, None)
+            try:
+                self.link.__enter__()
+            except OSError as e:
+                raise HeadsetError(f"cannot open the control channel: {e}") from e
+            try:
+                self.ask(bytes((CMD_CONNECT_GET_PROTOCOL_INFO, 0x00)), CMD_CONNECT_RET_PROTOCOL_INFO)
+            except HeadsetError:
+                self.link.__exit__(None, None, None)
+                raise
+        except BaseException:
+            self._lock.__exit__(None, None, None)
             raise
         return self
 
     def __exit__(self, *exc):
-        self.link.__exit__(*exc)
+        try:
+            self.link.__exit__(*exc)
+        finally:
+            self._lock.__exit__(None, None, None)
 
     def ask(self, payload: bytes, reply_cmd: int, timeout: float = 3.0, optional: bool = False) -> bytes | None:
         try:

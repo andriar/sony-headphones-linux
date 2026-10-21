@@ -30,11 +30,14 @@ contents:
   - src: packaging/bin/sonyeq-tray
     dst: /usr/bin/sonyeq-tray
     file_info: {mode: 0755}
-  - src: data/io.github.andriar.SonyHeadphones.desktop
-    dst: /usr/share/applications/io.github.andriar.SonyHeadphones.desktop
+  - src: data/com.andriar.SonyHeadphones.desktop
+    dst: /usr/share/applications/com.andriar.SonyHeadphones.desktop
     file_info: {mode: 0644}
   - src: data/sonyeq-tray.desktop
     dst: /usr/share/applications/sonyeq-tray.desktop
+    file_info: {mode: 0644}
+  - src: packaging/flatpak/com.andriar.SonyHeadphones.svg
+    dst: /usr/share/icons/hicolor/scalable/apps/com.andriar.SonyHeadphones.svg
     file_info: {mode: 0644}
   - src: gnome-shell-extension/sony-headphones@andriar.github.io/*
     dst: /usr/share/gnome-shell/extensions/sony-headphones@andriar.github.io/

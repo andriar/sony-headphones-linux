@@ -22,9 +22,7 @@ def dev(mac="AA:BB:CC:DD:EE:FF", name="WH-1000XM5", connected=False, v2=True, v1
 @unittest.skipIf(gui is None, "PyGObject not installed")
 class ExplainTest(unittest.TestCase):
     def explain(self, devices, err=HeadsetError("x", disconnected=True), mac=None):
-        with mock.patch.object(bluez, "sony_devices", return_value=devices), \
-                mock.patch.object(bluez, "device_info", side_effect=lambda m: next(
-                    (d for d in devices if d.mac == m), None)):
+        with mock.patch.object(bluez, "sony_devices", return_value=devices):
             return gui.explain(err, Headset(mac))
 
     def test_nothing_paired(self):
@@ -46,7 +44,12 @@ class ExplainTest(unittest.TestCase):
             self.assertEqual(gui.explain(HeadsetError("no reply"), Headset()).kind, "unreachable")
 
     def test_fixed_mac_that_bluez_forgot(self):
-        self.assertEqual(self.explain([], mac="11:22:33:44:55:66").kind, "none")
+        self.assertEqual(self.explain([dev()], mac="11:22:33:44:55:66").kind, "none")
+
+    def test_fixed_mac_picks_that_headset(self):
+        a = self.explain([dev(connected=True), dev(mac="11:22:33:44:55:66", name="WF-1000XM5")],
+                         mac="11:22:33:44:55:66")
+        self.assertEqual((a.kind, a.device.name), ("disconnected", "WF-1000XM5"))
 
     def test_bluetoothctl_missing(self):
         with mock.patch.object(bluez, "sony_devices", side_effect=bluez.DeviceError("bluetoothctl not found")):
@@ -114,3 +117,24 @@ class JsonCliTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ConnectTest(unittest.TestCase):
+    def test_connects_over_dbus(self):
+        bus = mock.Mock()
+        objects = {"/org/bluez/hci0/dev_AA_BB_CC_DD_EE_FF": {"org.bluez.Device1": {"Address": "AA:BB:CC:DD:EE:FF"}}}
+        with mock.patch.object(bluez, "_bluez_objects", return_value=(bus, objects)):
+            self.assertTrue(bluez.connect("aa:bb:cc:dd:ee:ff"))
+        self.assertEqual(bus.call_sync.call_args.args[1:4],
+                         ("/org/bluez/hci0/dev_AA_BB_CC_DD_EE_FF", "org.bluez.Device1", "Connect"))
+
+    def test_unknown_device(self):
+        with mock.patch.object(bluez, "_bluez_objects", return_value=(mock.Mock(), {})), \
+                self.assertRaisesRegex(bluez.DeviceError, "not known"):
+            bluez.connect("AA:BB:CC:DD:EE:FF")
+
+    def test_falls_back_to_bluetoothctl(self):
+        with mock.patch.object(bluez, "_bluez_objects", return_value=None), \
+                mock.patch.object(bluez, "_run", return_value="Attempting\nConnection successful\n") as run:
+            self.assertTrue(bluez.connect("AA:BB:CC:DD:EE:FF"))
+        self.assertEqual(run.call_args.args, ("bluetoothctl", "connect", "AA:BB:CC:DD:EE:FF"))

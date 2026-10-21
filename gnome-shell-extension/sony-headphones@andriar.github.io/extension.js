@@ -12,7 +12,7 @@ import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
 Gio._promisify(Gio.Subprocess.prototype, 'communicate_utf8_async');
 
-const APP_DESKTOP_ID = 'io.github.andriar.SonyHeadphones.desktop';
+const APP_DESKTOP_ID = 'com.andriar.SonyHeadphones.desktop';
 const ICON = 'audio-headphones-symbolic';
 const MODES = [
     ['nc', 'Noise Canceling'],

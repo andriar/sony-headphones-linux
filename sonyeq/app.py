@@ -535,7 +535,9 @@ class App(Adw.Application):
         (self.get_active_window() or Window(self)).present()
 
     def _on_about(self, *_):
-        about = dict(application_name="Sony Headphones", application_icon="audio-headphones",
+        icon = APP_ID if Gtk.IconTheme.get_for_display(self.get_active_window().get_display()).has_icon(APP_ID) \
+            else "audio-headphones"
+        about = dict(application_name="Sony Headphones", application_icon=icon,
                      version=__version__, developer_name="sony-headphones-linux contributors",
                      website="https://github.com/andriar/sony-headphones-linux",
                      issue_url="https://github.com/andriar/sony-headphones-linux/issues",

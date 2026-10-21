@@ -9,7 +9,7 @@ from gi.repository import Gio, GLib
 from . import bluez
 from .headset import Headset, HeadsetError, Snapshot
 
-APP_ID = "io.github.andriar.SonyHeadphones"
+APP_ID = "com.andriar.SonyHeadphones"
 RECONNECT_DELAY_MS = 3000
 MODE_LABELS = {"nc": "Noise canceling", "ambient": "Ambient sound", "off": "Noise control off"}
 PRESET_LABELS = {
@@ -41,11 +41,9 @@ def explain(err: HeadsetError, headset: Headset) -> Absence:
     if not err.disconnected:
         return Absence("unreachable", str(err), headset.device)
     try:
+        devices = bluez.sony_devices()
         if headset.mac:
-            dev = bluez.device_info(headset.mac)
-            devices = [dev] if dev else []
-        else:
-            devices = bluez.sony_devices()
+            devices = [d for d in devices if d.mac == headset.mac.upper()]
     except bluez.DeviceError as e:
         return Absence("none", str(e))
     supported = [d for d in devices if d.v2]

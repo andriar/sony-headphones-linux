@@ -55,7 +55,9 @@ Without installing, run it from the checkout with `python3 -m sonyeq`,
 Add the app to your app grid:
 
 ```bash
-cp data/io.github.andriar.SonyHeadphones.desktop ~/.local/share/applications/
+cp data/com.andriar.SonyHeadphones.desktop ~/.local/share/applications/
+install -Dm644 packaging/flatpak/com.andriar.SonyHeadphones.svg \
+  ~/.local/share/icons/hicolor/scalable/apps/com.andriar.SonyHeadphones.svg
 ```
 
 On GNOME, add the Quick Settings toggle. It needs `sonyeq` installed (above).

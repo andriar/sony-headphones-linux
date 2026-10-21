@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sony-headphones-linux"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Control Sony headphones (MDR protocol v2) from Linux: EQ, noise cancelling, ambient sound, battery"
 readme = "README.md"
 license = { text = "MIT" }
@@ -23,3 +23,6 @@ sonyeq-tray = "sonyeq.tray:main"
 
 [tool.setuptools]
 packages = ["sonyeq"]
+
+[tool.setuptools.dynamic]
+version = { attr = "sonyeq.__version__" }

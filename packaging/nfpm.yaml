@@ -1,0 +1,55 @@
+# Build: VERSION=0.1.0 nfpm package -f packaging/nfpm.yaml -p deb|rpm -t dist/
+name: sony-headphones-linux
+arch: all
+platform: linux
+version: ${VERSION}
+version_schema: semver
+release: 1
+section: sound
+priority: optional
+maintainer: Andriar M <andriar.fazzan@gmail.com>
+description: |
+  Control Sony headphones from Linux.
+  Noise cancelling, ambient sound, hardware equalizer and battery level for
+  Sony headphones that use the MDR v2 control protocol (tested on WH-1000XM5).
+  Includes the sonyeq CLI and a tray icon.
+homepage: https://apps.andriar.com/sony-headphones
+license: MIT
+
+contents:
+  - src: sonyeq/*.py
+    dst: /usr/share/sony-headphones-linux/sonyeq/
+    file_info: {mode: 0644}
+  - src: packaging/bin/sonyeq
+    dst: /usr/bin/sonyeq
+    file_info: {mode: 0755}
+  - src: packaging/bin/sonyeq-tray
+    dst: /usr/bin/sonyeq-tray
+    file_info: {mode: 0755}
+  - src: data/sonyeq-tray.desktop
+    dst: /usr/share/applications/sonyeq-tray.desktop
+    file_info: {mode: 0644}
+  - src: LICENSE
+    dst: /usr/share/doc/sony-headphones-linux/copyright
+    file_info: {mode: 0644}
+    packager: deb
+  - src: LICENSE
+    dst: /usr/share/licenses/sony-headphones-linux/LICENSE
+    file_info: {mode: 0644}
+    packager: rpm
+
+overrides:
+  deb:
+    depends:
+      - python3 (>= 3.10)
+      - python3-gi
+      - gir1.2-gtk-3.0
+      - gir1.2-ayatanaappindicator3-0.1
+      - bluez
+  rpm:
+    depends:
+      - python3 >= 3.10
+      - python3-gobject
+      - gtk3
+      - libayatana-appindicator-gtk3
+      - bluez

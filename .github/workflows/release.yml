@@ -33,8 +33,8 @@ jobs:
       - uses: actions/upload-artifact@v4
         with: { name: packages, path: dist/ }
 
-  # Built on every release as a check, but not published: RFCOMM sockets were refused inside the
-  # sandbox in testing. Add it to publish.needs and the upload loop once that is confirmed working.
+  # Built on every release as a check, but not published yet. RFCOMM inside the sandbox works since
+  # the manifest added --share=network; add this job to publish.needs and the upload loop to ship it.
   flatpak:
     runs-on: ubuntu-24.04
     continue-on-error: true

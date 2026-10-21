@@ -77,6 +77,28 @@ cp data/sonyeq-tray.desktop ~/.config/autostart/
 
 The .deb and .rpm packages install all of this; you only enable the extension.
 
+### Flatpak
+
+`packaging/flatpak/` builds the app as a Flatpak (`flatpak run com.andriar.SonyHeadphones`).
+It ships the app and the `sonyeq` CLI (`flatpak run --command=sonyeq com.andriar.SonyHeadphones status`),
+but not the tray icon or the Quick Settings toggle; install those from the checkout or a package.
+
+```bash
+flatpak run org.flatpak.Builder --user --install --force-clean --install-deps-from=flathub \
+  build/app packaging/flatpak/com.andriar.SonyHeadphones.yml
+```
+
+Two sandbox details:
+
+- The app has network access (`--share=network`). It does not use the network, but Linux only
+  creates Bluetooth sockets in the host's network namespace, and without it every RFCOMM
+  connection fails with "Address family not supported by protocol".
+- The headset lock (`$XDG_RUNTIME_DIR/sonyeq.lock`) is shared with `sonyeq` and the extension
+  on the host through `--filesystem=xdg-run/sonyeq.lock`, but Flatpak can only share it when the
+  file already exists when the app starts. Any host `sonyeq` command creates it, and it stays
+  until you log out. If the app starts first, its lock is private to the sandbox, so a host
+  command that talks to the headset at the same moment can fail to connect; run it again.
+
 ## CLI
 
 ```bash
